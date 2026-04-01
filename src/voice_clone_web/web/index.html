@@ -8,163 +8,188 @@
 </head>
 <body>
   <div class="app-shell">
-    <header class="page-header">
-      <div>
-        <h1>Voice Clone Web</h1>
-        <p>Tune a reference window from a long clip, run auto-ASR with manual override, then generate new cloned audio.</p>
+
+    <!-- Top bar -->
+    <header class="top-bar">
+      <span class="app-title">Voice Clone</span>
+      <div class="top-bar-sep"></div>
+      <input id="clipFileInput" type="file" accept="audio/*,video/*" class="hidden">
+      <div class="clip-display">
+        <svg class="clip-icon" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <path d="M2 2.5A.5.5 0 0 1 2.5 2h5L10 4.5V11.5a.5.5 0 0 1-.5.5h-7a.5.5 0 0 1-.5-.5v-9Z" stroke="currentColor" stroke-width="1.2"/>
+          <path d="M7.5 2v2.5H10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        </svg>
+        <span id="clipName" class="clip-name-input">No clip selected</span>
       </div>
-      <button id="loadClipBtn" class="primary">Choose Clip</button>
+      <button id="loadClipBtn" class="btn-choose">
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" width="14" height="14">
+          <path d="M2 10v3h12v-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M8 2v8M5 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        Choose Clip
+      </button>
     </header>
 
-    <div class="single-column">
-      <section class="panel source-panel">
-        <div class="panel-header">
-          <div>
-            <h2>Source Clip</h2>
-            <p class="panel-subtitle">Load a reference audio or video clip, then pick the window you want to clone from.</p>
-          </div>
+    <div id="clipMeta" class="hidden"></div>
+
+    <!-- Timeline -->
+    <section class="panel timeline-panel">
+      <div class="hidden-media">
+        <video id="sourceVideo"></video>
+        <audio id="sourceAudio"></audio>
+      </div>
+
+      <!-- Transport row -->
+      <div class="transport-row">
+        <!-- Play / pause -->
+        <button id="sourcePlayBtn" class="icon-btn" aria-label="Play or pause source" title="Play/pause">
+          <svg class="i-play" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5.5 3.5 12.5 8 5.5 12.5z"/></svg>
+          <svg class="i-pause" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="3.5" y="3.5" width="3" height="9" rx=".75"/><rect x="9.5" y="3.5" width="3" height="9" rx=".75"/></svg>
+        </button>
+        <!-- Play window -->
+        <button id="windowPlayBtn" class="icon-btn" aria-label="Play selected window" title="Play window">
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <rect x="1.5" y="3.25" width="13" height="9.5" rx="1.25" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M6.5 6.25 10.5 8 6.5 9.75z" fill="currentColor"/>
+          </svg>
+        </button>
+
+        <div class="t-sep"></div>
+
+        <!-- Zoom out -->
+        <button id="zoomOutBtn" class="icon-btn" aria-label="Zoom out" title="Zoom out">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" aria-hidden="true">
+            <circle cx="6.5" cy="6.5" r="3.75" stroke-width="1.5"/>
+            <line x1="4.75" y1="6.5" x2="8.25" y2="6.5" stroke-width="1.5"/>
+            <line x1="9.75" y1="9.75" x2="12.75" y2="12.75" stroke-width="1.75"/>
+          </svg>
+        </button>
+        <!-- Zoom in -->
+        <button id="zoomInBtn" class="icon-btn" aria-label="Zoom in" title="Zoom in">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" aria-hidden="true">
+            <circle cx="6.5" cy="6.5" r="3.75" stroke-width="1.5"/>
+            <line x1="4.75" y1="6.5" x2="8.25" y2="6.5" stroke-width="1.5"/>
+            <line x1="6.5" y1="4.75" x2="6.5" y2="8.25" stroke-width="1.5"/>
+            <line x1="9.75" y1="9.75" x2="12.75" y2="12.75" stroke-width="1.75"/>
+          </svg>
+        </button>
+        <!-- Zoom to selection -->
+        <button id="zoomToWindowBtn" class="icon-btn" aria-label="Zoom to selection" title="Zoom to selection">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" aria-hidden="true">
+            <path d="M2 5.5V2h3.5M10.5 2H14v3.5M14 10.5V14h-3.5M5.5 14H2v-3.5"/>
+            <rect x="5" y="5" width="6" height="6" rx="1" stroke-width="1.25"/>
+          </svg>
+        </button>
+        <!-- Fit all -->
+        <button id="fitAllBtn" class="icon-btn" aria-label="Fit full timeline" title="Fit all">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" aria-hidden="true">
+            <path d="M2 2h4.5M2 2v4.5M9.5 14H14M14 14v-4.5M14 2h-4.5M14 2v4.5M2 14h4.5M2 14v-4.5"/>
+          </svg>
+        </button>
+
+        <!-- Status text (kept in DOM for JS, not displayed) -->
+        <span id="playbackStatus" class="hidden"></span>
+        <span id="windowStatus" class="hidden"></span>
+      </div>
+
+      <!-- Waveform -->
+      <div class="waveform-shell">
+        <canvas id="waveformCanvas" width="1400" height="150"></canvas>
+      </div>
+
+      <!-- Viewport scroll -->
+      <div class="viewport-row">
+        <input id="viewportScroll" type="range" min="0" max="1000" step="1" value="0" aria-label="Timeline scroll">
+        <span id="viewportStatus" class="status-pill">Full timeline</span>
+      </div>
+
+      <!-- Selection controls: nudge + start/end -->
+      <div class="selection-row">
+        <button data-nudge="-1.0" class="icon-btn" aria-label="Move left 1s" title="Move left 1 s">
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <rect x="2.5" y="3.5" width="2" height="9" rx=".5"/>
+            <path d="M13.5 4 6 8l7.5 4z"/>
+          </svg>
+        </button>
+        <button data-nudge="-0.2" class="icon-btn" aria-label="Move left 0.2s" title="Move left 0.2 s">
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M12 3.5 4.5 8 12 12.5z"/></svg>
+        </button>
+        <label class="time-label">
+          <span>Start</span>
+          <input id="startNumber" type="number" min="0" step="0.05">
+        </label>
+        <input id="startRange" type="range" min="0" max="10" step="0.05" class="flex-range" aria-label="Start slider">
+        <input id="endRange" type="range" min="0.1" max="10" step="0.05" class="flex-range" aria-label="End slider">
+        <label class="time-label">
+          <span>End</span>
+          <input id="endNumber" type="number" min="0.1" step="0.05">
+        </label>
+        <button data-nudge="0.2" class="icon-btn" aria-label="Move right 0.2s" title="Move right 0.2 s">
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 3.5 11.5 8 4 12.5z"/></svg>
+        </button>
+        <button data-nudge="1.0" class="icon-btn" aria-label="Move right 1s" title="Move right 1 s">
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M2.5 4 10 8l-7.5 4z"/>
+            <rect x="11.5" y="3.5" width="2" height="9" rx=".5"/>
+          </svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- Bottom: reference text | target text + generate -->
+    <div class="bottom-grid">
+
+      <!-- Reference text -->
+      <section class="panel text-panel">
+        <div class="panel-head">
+          <h2>Reference Text</h2>
+          <select id="referenceLanguageSelect" class="select-sm" aria-label="Reference language"></select>
+          <button id="asrBtn" class="btn">Auto ASR</button>
         </div>
-        <input id="clipFileInput" type="file" accept="audio/*,video/*" class="hidden">
-        <div class="source-grid">
-          <label>
-            <span>Selected clip</span>
-            <input id="clipName" type="text" readonly placeholder="No clip selected">
-          </label>
-          <div class="meta-list compact-meta workflow-box">
-            1. Choose a source clip.
-            2. Drag a reference window on the timeline.
-            3. Run ASR or type the reference text manually.
-            4. Enter the target text and generate.
-          </div>
+        <div id="asrProgress" class="progress-row hidden">
+          <span class="progress-label">Running ASR…</span>
+          <div class="progress-track"><div class="progress-fill"></div></div>
+          <span class="progress-pct">0%</span>
         </div>
-        <div id="clipMeta" class="meta-list"></div>
+        <textarea id="refText" placeholder="Auto-ASR result or manual override"></textarea>
       </section>
 
-      <main class="main-column">
-        <section class="panel">
-          <div class="panel-header">
-            <div>
-              <h2>Reference Timeline</h2>
-              <p class="panel-subtitle">Pick the source window you want to clone from.</p>
-            </div>
-            <span id="windowStatus" class="muted">Choose a clip to begin.</span>
-          </div>
-          <div class="hidden-media">
-            <video id="sourceVideo" class="hidden"></video>
-            <audio id="sourceAudio" class="hidden"></audio>
-          </div>
-          <div class="transport-row">
-            <button id="sourcePlayBtn" class="icon-btn" aria-label="Play or pause source media" title="Play or pause">
-              <span class="icon-play" aria-hidden="true"></span>
-            </button>
-            <button id="windowPlayBtn" class="icon-btn" aria-label="Play selected window" title="Play selected window">
-              <span class="icon-window-play" aria-hidden="true"></span>
-            </button>
-            <button id="zoomOutBtn" class="icon-btn" aria-label="Zoom out waveform" title="Zoom out">
-              <span class="icon-zoom-out" aria-hidden="true"></span>
-            </button>
-            <button id="zoomInBtn" class="icon-btn" aria-label="Zoom in waveform" title="Zoom in">
-              <span class="icon-zoom-in" aria-hidden="true"></span>
-            </button>
-            <button id="zoomToWindowBtn" class="icon-btn" aria-label="Zoom to selection" title="Zoom to selection">
-              <span class="icon-focus" aria-hidden="true"></span>
-            </button>
-            <button id="fitAllBtn" class="icon-btn" aria-label="Fit full timeline" title="Fit full timeline">
-              <span class="icon-fit" aria-hidden="true"></span>
-            </button>
-            <span id="playbackStatus" class="muted">Click waveform to seek. Drag to select.</span>
-          </div>
-          <div class="waveform-shell">
-            <canvas id="waveformCanvas" width="1400" height="280"></canvas>
-          </div>
-          <div class="hint-row">
-            <span>Click to seek. Drag to create a window. Drag an edge to fine-tune only one side.</span>
-            <span>Scroll up or down to zoom. Scroll sideways or use the scrub bar to pan long clips.</span>
-          </div>
-          <div class="viewport-row">
-            <input id="viewportScroll" type="range" min="0" max="1000" step="1" value="0" aria-label="Timeline viewport scroll">
-            <span id="viewportStatus" class="status-pill">Full timeline</span>
-          </div>
-          <div class="control-grid">
-            <label>
-              <span>Start</span>
-              <input id="startNumber" type="number" min="0" step="0.05">
-            </label>
-            <label>
-              <span>End</span>
-              <input id="endNumber" type="number" min="0.1" step="0.05">
-            </label>
-            <label class="range-wrap">
-              <span>Start slider</span>
-              <input id="startRange" type="range" min="0" max="10" step="0.05">
-            </label>
-            <label class="range-wrap">
-              <span>End slider</span>
-              <input id="endRange" type="range" min="0.1" max="10" step="0.05">
-            </label>
-          </div>
-          <div class="button-row">
-            <button data-nudge="-1.0" class="icon-btn" aria-label="Move selection left by 1 second" title="Move left 1 second">
-              <span class="icon-step-left" aria-hidden="true"></span>
-            </button>
-            <button data-nudge="-0.2" class="icon-btn" aria-label="Move selection left by 0.2 seconds" title="Move left 0.2 seconds">
-              <span class="icon-left" aria-hidden="true"></span>
-            </button>
-            <button data-nudge="0.2" class="icon-btn" aria-label="Move selection right by 0.2 seconds" title="Move right 0.2 seconds">
-              <span class="icon-right" aria-hidden="true"></span>
-            </button>
-            <button data-nudge="1.0" class="icon-btn" aria-label="Move selection right by 1 second" title="Move right 1 second">
-              <span class="icon-step-right" aria-hidden="true"></span>
-            </button>
-          </div>
-        </section>
+      <!-- Target text + generate -->
+      <section class="panel generate-panel">
+        <div class="panel-head">
+          <h2>Target Text</h2>
+          <select id="outputLanguageSelect" class="select-sm" aria-label="Output language"></select>
+        </div>
+        <textarea id="targetText"></textarea>
+        <div id="genProgress" class="progress-row hidden">
+          <span class="progress-label">Generating…</span>
+          <div class="progress-track"><div class="progress-fill"></div></div>
+          <span class="progress-pct">0%</span>
+        </div>
+        <div class="generate-row">
+          <button id="generateBtn" class="btn-primary">Generate</button>
+          <div id="validationBox" class="validation-box inline-validation">Load a clip to enable ASR and generation.</div>
+        </div>
+        <!-- statusBox kept in DOM for JS -->
+        <div id="statusBox" class="hidden">Ready.</div>
+        <!-- Custom audio player -->
+        <div id="audioPlayerUI" class="audio-player-ui hidden">
+          <button id="audioPlayBtn" class="icon-btn audio-play-btn" title="Play/pause">
+            <svg class="i-play" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5.5 3.5 12.5 8 5.5 12.5z"/></svg>
+            <svg class="i-pause" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="3.5" y="3.5" width="3" height="9" rx=".75"/><rect x="9.5" y="3.5" width="3" height="9" rx=".75"/></svg>
+          </button>
+          <span id="audioCurrentTime" class="audio-time">0:00</span>
+          <input id="audioSeek" type="range" min="0" max="1" step="0.001" value="0" class="audio-seek" aria-label="Seek">
+          <span id="audioDuration" class="audio-time muted">–:––</span>
+          <a id="savedWavLink" href="#" target="_blank" rel="noopener" class="audio-dl-btn hidden" title="Download WAV">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true">
+              <path d="M8 2v8M5 7l3 3 3-3M2 12v2h12v-2"/>
+            </svg>
+          </a>
+        </div>
+        <audio id="generatedAudio"></audio>
+      </section>
 
-        <section class="text-grid">
-          <section class="panel">
-            <div class="panel-header">
-              <h2>Reference Text</h2>
-              <div class="header-actions">
-                <select id="referenceLanguageSelect" class="inline-select" aria-label="Reference language"></select>
-                <button id="asrBtn">Auto ASR</button>
-              </div>
-            </div>
-            <textarea id="refText" rows="5" placeholder="Auto-ASR result or manual override"></textarea>
-          </section>
-
-          <section class="panel">
-            <div class="panel-header">
-              <h2>Target Text</h2>
-              <select id="outputLanguageSelect" class="inline-select" aria-label="Output language"></select>
-            </div>
-            <textarea id="targetText" rows="5"></textarea>
-          </section>
-        </section>
-
-        <section class="panel actions-panel">
-          <div class="generate-grid">
-            <div class="panel-header">
-              <div>
-                <h2>Generate</h2>
-                <p class="panel-subtitle">Run ASR on the selected reference window, then generate the new line.</p>
-              </div>
-            </div>
-            <div class="generate-main">
-              <div id="validationBox" class="validation-box">
-                Load a clip to enable ASR and generation.
-              </div>
-              <button id="generateBtn" class="primary">Generate New Audio</button>
-              <div id="statusBox" class="status-box">Ready.</div>
-            </div>
-            <div class="generate-output">
-              <div class="panel-header">
-                <h2>Generated Audio</h2>
-                <a id="savedWavLink" href="#" target="_blank" rel="noopener" class="muted hidden">Open WAV</a>
-              </div>
-              <audio id="generatedAudio" controls class="media-player"></audio>
-            </div>
-          </div>
-        </section>
-      </main>
     </div>
   </div>
 

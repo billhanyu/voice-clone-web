@@ -48,10 +48,17 @@ const els = {
   sourceVideo: document.getElementById("sourceVideo"),
   sourceAudio: document.getElementById("sourceAudio"),
   asrBtn: document.getElementById("asrBtn"),
+  asrProgress: document.getElementById("asrProgress"),
+  genProgress: document.getElementById("genProgress"),
   refText: document.getElementById("refText"),
   targetText: document.getElementById("targetText"),
   generateBtn: document.getElementById("generateBtn"),
   generatedAudio: document.getElementById("generatedAudio"),
+  audioPlayerUI: document.getElementById("audioPlayerUI"),
+  audioPlayBtn: document.getElementById("audioPlayBtn"),
+  audioCurrentTime: document.getElementById("audioCurrentTime"),
+  audioSeek: document.getElementById("audioSeek"),
+  audioDuration: document.getElementById("audioDuration"),
   savedWavLink: document.getElementById("savedWavLink"),
   statusBox: document.getElementById("statusBox"),
   referenceLanguageSelect: document.getElementById("referenceLanguageSelect"),
@@ -59,9 +66,56 @@ const els = {
   validationBox: document.getElementById("validationBox"),
 };
 
+function formatAudioTime(sec) {
+  if (!isFinite(sec)) return "–:––";
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function bindAudioPlayer() {
+  const audio = els.generatedAudio;
+  els.audioPlayBtn.addEventListener("click", () => {
+    if (audio.paused) audio.play().catch(() => {});
+    else audio.pause();
+  });
+  audio.addEventListener("play",  () => els.audioPlayBtn.classList.add("is-active"));
+  audio.addEventListener("pause", () => els.audioPlayBtn.classList.remove("is-active"));
+  audio.addEventListener("ended", () => els.audioPlayBtn.classList.remove("is-active"));
+  audio.addEventListener("timeupdate", () => {
+    if (!audio.duration) return;
+    els.audioCurrentTime.textContent = formatAudioTime(audio.currentTime);
+    els.audioSeek.value = audio.currentTime / audio.duration;
+  });
+  audio.addEventListener("loadedmetadata", () => {
+    els.audioDuration.textContent = formatAudioTime(audio.duration);
+    els.audioSeek.value = 0;
+    els.audioCurrentTime.textContent = "0:00";
+    els.audioPlayerUI.classList.remove("hidden");
+  });
+  els.audioSeek.addEventListener("input", () => {
+    if (audio.duration) audio.currentTime = Number(els.audioSeek.value) * audio.duration;
+  });
+}
+
+function showProgress(el, label, pct) {
+  el.classList.remove("hidden");
+  el.querySelector(".progress-label").textContent = label;
+  el.querySelector(".progress-fill").style.width = `${Math.max(2, pct)}%`;
+  el.querySelector(".progress-pct").textContent = `${pct}%`;
+}
+
+function hideProgress(el) {
+  el.classList.add("hidden");
+}
+
 function setStatus(message, tone = "info") {
   els.statusBox.textContent = message;
   els.statusBox.dataset.tone = tone;
+  if (tone === "error") {
+    els.validationBox.textContent = message;
+    els.validationBox.dataset.state = "needs-attention";
+  }
 }
 
 function setWindowStatus(message) {
@@ -321,7 +375,7 @@ function updateClipMeta() {
 function sizeCanvas(canvas) {
   const ratio = window.devicePixelRatio || 1;
   const width = canvas.clientWidth || 1200;
-  const height = 280;
+  const height = 150;
   canvas.width = Math.round(width * ratio);
   canvas.height = Math.round(height * ratio);
   const ctx = canvas.getContext("2d");
@@ -479,7 +533,9 @@ function applyWindowChange(startSec, endSec, { seekToStart = true, render = true
   state.playbackMode = "window";
   state.playbackStopSec = state.endSec;
   els.windowPlayBtn.classList.add("is-active");
-  if (seekToStart) {
+  const media = activeSourcePlayer();
+  const playheadInWindow = state.sourceCurrentSec >= state.startSec && state.sourceCurrentSec < state.endSec;
+  if (seekToStart && !(media && !media.paused && playheadInWindow)) {
     seekSourceMedia(state.startSec);
   } else if (render) {
     renderWaveform();
@@ -506,7 +562,7 @@ async function loadClipFromSource(sourcePath, sourceMediaUrl = null) {
   const data = await response.json();
   state.clip = data.clip;
   state.waveform = data.waveform;
-  els.clipName.value = state.clip.source_path.split(/[\\/]/).pop();
+  els.clipName.textContent = state.clip.source_path.split(/[\\/]/).pop();
   els.clipName.dataset.sourcePath = state.clip.source_path;
   setSourceMedia(sourceMediaUrl || data.source_url);
   fitViewportToClip({ render: false });
@@ -530,7 +586,7 @@ async function chooseClip() {
 async function handleFileSelection() {
   const file = els.clipFileInput.files?.[0];
   if (!file) return;
-  els.clipName.value = file.name;
+  els.clipName.textContent = file.name;
   setStatus("Uploading clip...");
   if (state.localSourceUrl) {
     URL.revokeObjectURL(state.localSourceUrl);
@@ -543,7 +599,8 @@ async function handleFileSelection() {
 async function runAsr() {
   if (!requireWindow("Auto ASR")) return;
   const previousRefText = els.refText.value;
-  els.refText.value = "Running ASR... 0%";
+  els.asrBtn.disabled = true;
+  showProgress(els.asrProgress, "Running ASR…", 0);
   try {
     const response = await postJson("/api/asr", {
       source_path: state.clip.source_path,
@@ -554,16 +611,16 @@ async function runAsr() {
     });
     const job = await response.json();
     const data = await pollJob(job.job_id, (nextJob) => {
-      els.refText.value = `${nextJob.message} ${nextJob.progress}%`;
-      setStatus(`ASR: ${nextJob.progress}%`);
+      showProgress(els.asrProgress, nextJob.message || "Running ASR…", nextJob.progress);
     });
     els.refText.value = data.text;
     setStatus(data.status);
-    updateActionAvailability();
   } catch (error) {
     els.refText.value = previousRefText;
-    updateActionAvailability();
     throw error;
+  } finally {
+    hideProgress(els.asrProgress);
+    updateActionAvailability();
   }
 }
 
@@ -571,27 +628,34 @@ async function generateAudio() {
   if (!requireWindow("Generate")) return;
   if (!requireTextValue(els.refText.value, "Generate", "needs reference text first.")) return;
   if (!requireTextValue(els.targetText.value, "Generate", "needs target text first.")) return;
-  const response = await postJson("/api/generate", {
-    source_path: state.clip.source_path,
-    start_sec: state.startSec,
-    end_sec: state.endSec,
-    ref_text: els.refText.value,
-    target_text: els.targetText.value,
-    model_name: state.runtimeDefaults.model,
-    device: state.runtimeDefaults.device,
-    dtype_name: state.runtimeDefaults.dtype,
-    reference_language: selectedReferenceLanguage(),
-    output_language: selectedOutputLanguage(),
-  });
-  const job = await response.json();
-  const data = await pollJob(job.job_id, (nextJob) => {
-    setStatus(`Generation: ${nextJob.progress}%`);
-  });
-  els.generatedAudio.src = data.output_url;
-  els.generatedAudio.load();
-  els.savedWavLink.href = data.output_url;
-  els.savedWavLink.classList.remove("hidden");
-  setStatus(data.status);
+  els.generateBtn.disabled = true;
+  showProgress(els.genProgress, "Starting…", 0);
+  try {
+    const response = await postJson("/api/generate", {
+      source_path: state.clip.source_path,
+      start_sec: state.startSec,
+      end_sec: state.endSec,
+      ref_text: els.refText.value,
+      target_text: els.targetText.value,
+      model_name: state.runtimeDefaults.model,
+      device: state.runtimeDefaults.device,
+      dtype_name: state.runtimeDefaults.dtype,
+      reference_language: selectedReferenceLanguage(),
+      output_language: selectedOutputLanguage(),
+    });
+    const job = await response.json();
+    const data = await pollJob(job.job_id, (nextJob) => {
+      showProgress(els.genProgress, nextJob.message || "Generating…", nextJob.progress);
+    });
+    els.generatedAudio.src = data.output_url;
+    els.generatedAudio.load();
+    els.savedWavLink.href = data.output_url;
+    els.savedWavLink.classList.remove("hidden");
+    setStatus(data.status);
+  } finally {
+    hideProgress(els.genProgress);
+    updateActionAvailability();
+  }
 }
 
 function refreshStatusOnly() {
@@ -760,9 +824,12 @@ function bindSourcePlayback() {
     media.addEventListener("timeupdate", () => {
       state.sourceCurrentSec = media.currentTime || 0;
       if (state.playbackMode === "window" && state.playbackStopSec !== null && state.sourceCurrentSec >= state.playbackStopSec) {
+        state.playbackMode = "full";
+        state.playbackStopSec = null;
         media.currentTime = state.startSec;
         state.sourceCurrentSec = state.startSec;
-        els.playbackStatus.textContent = `Looping ${formatSeconds(state.startSec)}s to ${formatSeconds(state.endSec)}s`;
+        media.pause();
+        els.playbackStatus.textContent = "";
         renderWaveform();
         return;
       }
@@ -817,6 +884,7 @@ async function boot() {
 
   bindWaveformDrag();
   bindSourcePlayback();
+  bindAudioPlayer();
   window.addEventListener("resize", renderWaveform);
   window.addEventListener("keydown", (event) => {
     if (event.code !== "Space") return;
