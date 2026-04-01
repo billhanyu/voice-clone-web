@@ -511,7 +511,6 @@ def create_app() -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
     app.mount("/outputs", StaticFiles(directory=str(OUTPUT_DIR)), name="outputs")
-    app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
     @app.get("/")
     def index() -> FileResponse:
@@ -560,16 +559,10 @@ def create_app() -> FastAPI:
         if not file.filename:
             raise HTTPException(status_code=400, detail="No file selected.")
 
-        safe_name = Path(file.filename).name
-        destination = UPLOAD_DIR / safe_name
-        stem = destination.stem
-        suffix = destination.suffix
-        counter = 1
-        while destination.exists():
-            destination = UPLOAD_DIR / f"{stem}-{counter}{suffix}"
-            counter += 1
-
-        with destination.open("wb") as handle:
+        suffix = Path(file.filename).suffix
+        handle = tempfile.NamedTemporaryFile(prefix="voice-clone-upload-", suffix=suffix, delete=False)
+        destination = Path(handle.name)
+        with handle:
             while True:
                 chunk = await file.read(1024 * 1024)
                 if not chunk:
@@ -579,7 +572,6 @@ def create_app() -> FastAPI:
         return JSONResponse(
             {
                 "source_path": str(destination),
-                "source_url": public_media_url(str(destination)),
                 "filename": destination.name,
             }
         )

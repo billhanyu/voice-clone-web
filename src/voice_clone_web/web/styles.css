@@ -113,6 +113,14 @@ textarea {
   font-size: 14px;
 }
 
+.transport-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
 .control-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -152,9 +160,17 @@ textarea {
 
 .button-row {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
   margin-top: 14px;
+}
+
+.viewport-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  margin-top: 12px;
 }
 
 button,
@@ -195,6 +211,310 @@ video.media-player {
   object-fit: contain;
 }
 
+.icon-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(168, 187, 212, 0.16);
+}
+
+.icon-btn:hover {
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.icon-btn.is-active {
+  background: linear-gradient(135deg, #1f6fff, #4296ff);
+}
+
+.icon-btn span {
+  display: block;
+  position: relative;
+  width: 18px;
+  height: 18px;
+}
+
+.icon-play::before {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  border-style: solid;
+  border-width: 8px 0 8px 12px;
+  border-color: transparent transparent transparent currentColor;
+}
+
+.icon-btn.is-active .icon-play::before,
+.icon-btn.is-active .icon-play::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  width: 4px;
+  height: 14px;
+  background: currentColor;
+  border: 0;
+}
+
+.icon-btn.is-active .icon-play::before {
+  left: 3px;
+}
+
+.icon-btn.is-active .icon-play::after {
+  right: 3px;
+}
+
+.icon-cue::before,
+.icon-cue::after,
+.icon-window-play::before,
+.icon-zoom-in::before,
+.icon-zoom-out::before,
+.icon-focus::before,
+.icon-fit::before,
+.icon-left::before,
+.icon-right::before,
+.icon-step-left::before,
+.icon-step-right::before,
+.icon-preview::before,
+.icon-narrow::before,
+.icon-wide::before {
+  content: "";
+  position: absolute;
+}
+
+.icon-window-play::before {
+  left: 1px;
+  top: 2px;
+  width: 16px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+}
+
+.icon-window-play::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 5px;
+  border-style: solid;
+  border-width: 4px 0 4px 6px;
+  border-color: transparent transparent transparent currentColor;
+}
+
+.icon-cue::before {
+  left: 1px;
+  top: 2px;
+  width: 3px;
+  height: 14px;
+  background: currentColor;
+}
+
+.icon-cue::after {
+  left: 6px;
+  top: 1px;
+  border-style: solid;
+  border-width: 8px 0 8px 11px;
+  border-color: transparent transparent transparent currentColor;
+}
+
+.icon-left::before {
+  left: 4px;
+  top: 2px;
+  border-style: solid;
+  border-width: 7px 10px 7px 0;
+  border-color: transparent currentColor transparent transparent;
+}
+
+.icon-right::before {
+  right: 4px;
+  top: 2px;
+  border-style: solid;
+  border-width: 7px 0 7px 10px;
+  border-color: transparent transparent transparent currentColor;
+}
+
+.icon-step-left::before,
+.icon-step-right::before {
+  top: 2px;
+  width: 3px;
+  height: 14px;
+  background: currentColor;
+}
+
+.icon-step-left::before {
+  left: 1px;
+}
+
+.icon-step-left::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 2px;
+  border-style: solid;
+  border-width: 7px 10px 7px 0;
+  border-color: transparent currentColor transparent transparent;
+}
+
+.icon-step-right::before {
+  right: 1px;
+}
+
+.icon-step-right::after {
+  content: "";
+  position: absolute;
+  right: 6px;
+  top: 2px;
+  border-style: solid;
+  border-width: 7px 0 7px 10px;
+  border-color: transparent transparent transparent currentColor;
+}
+
+.icon-preview::before {
+  left: 2px;
+  top: 4px;
+  width: 14px;
+  height: 10px;
+  border: 2px solid currentColor;
+  border-radius: 999px;
+}
+
+.icon-preview::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 7px;
+  width: 4px;
+  height: 4px;
+  background: currentColor;
+  border-radius: 50%;
+}
+
+.icon-zoom-in::before,
+.icon-zoom-out::before {
+  left: 1px;
+  top: 1px;
+  width: 11px;
+  height: 11px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+
+.icon-zoom-in::after,
+.icon-zoom-out::after {
+  content: "";
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  width: 7px;
+  height: 2px;
+  background: currentColor;
+  transform: rotate(45deg);
+  transform-origin: center;
+}
+
+.icon-zoom-in,
+.icon-zoom-out {
+  overflow: visible;
+  background-repeat: no-repeat;
+  background-position: 5px 9px, 7px 7px;
+  background-size: 6px 2px, 0 0;
+}
+
+.icon-zoom-out {
+  background-image: linear-gradient(currentColor, currentColor);
+}
+
+.icon-zoom-in {
+  background-image:
+    linear-gradient(currentColor, currentColor),
+    linear-gradient(currentColor, currentColor);
+  background-size: 6px 2px, 2px 6px;
+}
+
+.icon-focus::before {
+  inset: 2px;
+  border: 2px solid currentColor;
+  border-radius: 4px;
+}
+
+.icon-focus::after {
+  left: 5px;
+  top: 5px;
+  width: 8px;
+  height: 8px;
+  background: currentColor;
+  border-radius: 2px;
+}
+
+.icon-fit::before {
+  inset: 1px;
+  border: 2px solid currentColor;
+  border-radius: 4px;
+}
+
+.icon-fit::after {
+  left: 4px;
+  right: 4px;
+  top: 8px;
+  height: 2px;
+  background: currentColor;
+  box-shadow: 0 -5px 0 currentColor, 0 5px 0 currentColor;
+}
+
+.icon-narrow::before,
+.icon-wide::before {
+  top: 7px;
+  width: 2px;
+  height: 6px;
+  background: currentColor;
+  left: 8px;
+}
+
+.icon-narrow::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 4px;
+  width: 14px;
+  height: 10px;
+  border-left: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+}
+
+.icon-wide::after {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 8px;
+  width: 16px;
+  height: 2px;
+  background: currentColor;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.viewport-row input[type="range"] {
+  width: 100%;
+  accent-color: #4296ff;
+}
+
+.hidden-media {
+  display: none;
+}
+
 .actions-panel {
   display: grid;
   gap: 14px;
@@ -224,6 +544,10 @@ video.media-player {
 
   .button-row {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .viewport-row {
+    grid-template-columns: 1fr;
   }
 
   .hint-row {

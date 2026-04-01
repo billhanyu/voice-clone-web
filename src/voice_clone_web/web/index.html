@@ -23,12 +23,41 @@
             <h2>Waveform</h2>
             <span id="windowStatus" class="muted">Choose a clip to begin.</span>
           </div>
+          <div class="hidden-media">
+            <video id="sourceVideo" class="hidden"></video>
+            <audio id="sourceAudio" class="hidden"></audio>
+          </div>
+          <div class="transport-row">
+            <button id="sourcePlayBtn" class="icon-btn" aria-label="Play or pause source media" title="Play or pause">
+              <span class="icon-play" aria-hidden="true"></span>
+            </button>
+            <button id="windowPlayBtn" class="icon-btn" aria-label="Play selected window" title="Play selected window">
+              <span class="icon-window-play" aria-hidden="true"></span>
+            </button>
+            <button id="zoomOutBtn" class="icon-btn" aria-label="Zoom out waveform" title="Zoom out">
+              <span class="icon-zoom-out" aria-hidden="true"></span>
+            </button>
+            <button id="zoomInBtn" class="icon-btn" aria-label="Zoom in waveform" title="Zoom in">
+              <span class="icon-zoom-in" aria-hidden="true"></span>
+            </button>
+            <button id="zoomToWindowBtn" class="icon-btn" aria-label="Zoom to selection" title="Zoom to selection">
+              <span class="icon-focus" aria-hidden="true"></span>
+            </button>
+            <button id="fitAllBtn" class="icon-btn" aria-label="Fit full timeline" title="Fit full timeline">
+              <span class="icon-fit" aria-hidden="true"></span>
+            </button>
+            <span id="playbackStatus" class="muted">Click waveform to seek. Drag to select.</span>
+          </div>
           <div class="waveform-shell">
             <canvas id="waveformCanvas" width="1400" height="280"></canvas>
           </div>
           <div class="hint-row">
-            <span>Drag to set start and end directly.</span>
-            <span>Single click recenters the current width.</span>
+            <span>Scroll to zoom around the pointer. Click to seek. Drag to set the reference window.</span>
+            <span>Use the scrub bar to pan long clips.</span>
+          </div>
+          <div class="viewport-row">
+            <input id="viewportScroll" type="range" min="0" max="1000" step="1" value="0" aria-label="Timeline viewport scroll">
+            <span id="viewportStatus" class="status-pill">Full timeline</span>
           </div>
           <div class="control-grid">
             <label>
@@ -49,30 +78,22 @@
             </label>
           </div>
           <div class="button-row">
-            <button data-nudge="-1.0">-1.0s</button>
-            <button data-nudge="-0.2">-0.2s</button>
-            <button data-nudge="0.2">+0.2s</button>
-            <button data-nudge="1.0">+1.0s</button>
-            <button id="narrowerBtn">Narrower</button>
-            <button id="widerBtn">Wider</button>
-            <button id="previewBtn">Preview</button>
+            <button data-nudge="-1.0" class="icon-btn" aria-label="Move selection left by 1 second" title="Move left 1 second">
+              <span class="icon-step-left" aria-hidden="true"></span>
+            </button>
+            <button data-nudge="-0.2" class="icon-btn" aria-label="Move selection left by 0.2 seconds" title="Move left 0.2 seconds">
+              <span class="icon-left" aria-hidden="true"></span>
+            </button>
+            <button data-nudge="0.2" class="icon-btn" aria-label="Move selection right by 0.2 seconds" title="Move right 0.2 seconds">
+              <span class="icon-right" aria-hidden="true"></span>
+            </button>
+            <button data-nudge="1.0" class="icon-btn" aria-label="Move selection right by 1 second" title="Move right 1 second">
+              <span class="icon-step-right" aria-hidden="true"></span>
+            </button>
           </div>
         </section>
 
         <section class="panel audio-panel">
-          <div>
-            <div class="panel-header">
-              <h2>Source Media</h2>
-            </div>
-            <video id="sourceVideo" controls class="hidden media-player"></video>
-            <audio id="sourceAudio" controls class="hidden media-player"></audio>
-          </div>
-          <div>
-            <div class="panel-header">
-              <h2>Reference Preview</h2>
-            </div>
-            <audio id="previewAudio" controls class="media-player"></audio>
-          </div>
           <div>
             <div class="panel-header">
               <h2>Generated Audio</h2>
