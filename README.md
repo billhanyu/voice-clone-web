@@ -4,14 +4,18 @@ Standalone FastAPI + HTML/JS web UI for experimenting with voice cloning on top 
 
 This repo intentionally does not include sample source clips, generated audio, cache files, or uploads.
 
+## Preview
+
+![Voice Clone Web UI preview](docs/screenshot.png)
+
 ## Features
 
 - Upload a source audio/video clip from the browser
-- Inspect a visible waveform
-- Drag to select the reference window
-- Preview the selected reference audio
-- Run Chinese ASR with manual override
-- Generate new cloned Chinese audio
+- Inspect a zoomable waveform with seek, pan, and selection editing
+- Drag to select the reference window and fine-tune its edges
+- Run reference-language ASR with manual override
+- Generate cloned audio in a separate output language
+- Play generated output directly in the app
 
 ## Requirements
 
@@ -77,3 +81,7 @@ This uses `.venv\Scripts\python.exe` and sets `PYTHONPATH` to `src` for the curr
 - Uploaded clips, extracted cache WAVs, and generated outputs are written under `data/` and ignored by git.
 - `Qwen3-TTS` is consumed as a dependency instead of vendoring or modifying its repo here.
 - On startup, the app checks for both `sox` and `ffmpeg` and will fail fast with install hints if either one is missing.
+
+## License
+
+This project is released under the [MIT License](LICENSE).
