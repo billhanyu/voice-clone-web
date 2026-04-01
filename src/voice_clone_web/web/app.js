@@ -389,6 +389,10 @@ function resumePlayback() {
   if (state.playbackMode === "window") {
     state.playbackStopSec = state.endSec;
     els.windowPlayBtn.classList.add("is-active");
+    if (media.currentTime < state.startSec || media.currentTime >= state.endSec) {
+      media.currentTime = state.startSec;
+      state.sourceCurrentSec = state.startSec;
+    }
   }
   media.play().catch((error) => setStatus(error.message));
 }
@@ -666,11 +670,9 @@ function bindSourcePlayback() {
     media.addEventListener("timeupdate", () => {
       state.sourceCurrentSec = media.currentTime || 0;
       if (state.playbackMode === "window" && state.playbackStopSec !== null && state.sourceCurrentSec >= state.playbackStopSec) {
-        media.pause();
-        media.currentTime = state.playbackStopSec;
-        state.sourceCurrentSec = state.playbackStopSec;
-        els.playbackStatus.textContent = `Window finished at ${formatSeconds(state.playbackStopSec)}s`;
-        els.windowPlayBtn.classList.remove("is-active");
+        media.currentTime = state.startSec;
+        state.sourceCurrentSec = state.startSec;
+        els.playbackStatus.textContent = `Looping ${formatSeconds(state.startSec)}s to ${formatSeconds(state.endSec)}s`;
         renderWaveform();
         return;
       }
@@ -721,7 +723,7 @@ async function boot() {
     const media = activeSourcePlayer();
     if (!media) return;
     if (media.paused) {
-      startFullPlayback();
+      resumePlayback();
       return;
     }
     media.pause();
