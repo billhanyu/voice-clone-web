@@ -7,9 +7,12 @@ import platform
 import shutil
 import subprocess
 import tempfile
-from dataclasses import asdict, dataclass
+import threading
+import time
+import uuid
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 import soundfile as sf
@@ -141,6 +144,61 @@ class WaveformOverview:
     highs: list[float]
 
 
+@dataclass
+class ProgressJob:
+    job_id: str
+    kind: str
+    status: str = "running"
+    progress: int = 0
+    message: str = "Queued..."
+    result: dict[str, Any] | None = None
+    error: str | None = None
+    created_at: float = field(default_factory=time.time)
+
+
+class JobStore:
+    def __init__(self) -> None:
+        self._jobs: dict[str, ProgressJob] = {}
+        self._lock = threading.Lock()
+
+    def create(self, kind: str, message: str) -> ProgressJob:
+        job = ProgressJob(job_id=uuid.uuid4().hex, kind=kind, progress=0, message=message)
+        with self._lock:
+            self._jobs[job.job_id] = job
+        return job
+
+    def update(
+        self,
+        job_id: str,
+        *,
+        status: str | None = None,
+        progress: int | None = None,
+        message: str | None = None,
+        result: dict[str, Any] | None = None,
+        error: str | None = None,
+    ) -> ProgressJob:
+        with self._lock:
+            job = self._jobs[job_id]
+            if status is not None:
+                job.status = status
+            if progress is not None:
+                job.progress = max(0, min(100, int(progress)))
+            if message is not None:
+                job.message = message
+            if result is not None:
+                job.result = result
+            if error is not None:
+                job.error = error
+            return job
+
+    def get(self, job_id: str) -> ProgressJob | None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                return None
+            return ProgressJob(**asdict(job))
+
+
 class Runtime:
     def __init__(self) -> None:
         self.tts_models: dict[tuple[str, str, str], Qwen3TTSModel] = {}
@@ -187,6 +245,7 @@ class Runtime:
 
 
 RUNTIME = Runtime()
+JOBS = JobStore()
 
 
 class ClipRequest(BaseModel):
@@ -209,6 +268,18 @@ class GenerateRequest(WindowRequest):
     model_name: str = DEFAULT_MODEL
     device: str = "cpu"
     dtype_name: str = "float32"
+
+
+def job_payload(job: ProgressJob) -> dict[str, Any]:
+    return {
+        "job_id": job.job_id,
+        "kind": job.kind,
+        "status": job.status,
+        "progress": job.progress,
+        "message": job.message,
+        "result": job.result,
+        "error": job.error,
+    }
 
 
 def normalize_text(text: str) -> str:
@@ -335,6 +406,101 @@ def save_window_to_temp(cache_wav_path: str, start_sec: float, end_sec: float) -
     return handle.name
 
 
+def public_media_url(source_path: str) -> str | None:
+    src = Path(source_path).resolve()
+    try:
+        relative = src.relative_to(UPLOAD_DIR.resolve())
+    except ValueError:
+        return None
+    return f"/uploads/{relative.as_posix()}"
+
+
+def transcribe_window_sync(request: AsrRequest) -> dict[str, Any]:
+    clip = load_or_prepare_clip(request.source_path)
+    start_sec, end_sec = clamp_window(clip.duration, request.start_sec, request.end_sec)
+    tmp_wav = save_window_to_temp(clip.cache_wav_path, start_sec, end_sec)
+    try:
+        asr = RUNTIME.get_asr(request.asr_device)
+        result = asr(
+            tmp_wav,
+            chunk_length_s=25,
+            batch_size=8,
+            return_timestamps=True,
+            generate_kwargs={"language": "zh"},
+        )
+    finally:
+        Path(tmp_wav).unlink(missing_ok=True)
+
+    return {
+        "text": normalize_text(result.get("text", "")),
+        "status": f"ASR complete for {start_sec:.2f}s to {end_sec:.2f}s",
+        "start_sec": start_sec,
+        "end_sec": end_sec,
+    }
+
+
+def generate_audio_sync(request: GenerateRequest) -> dict[str, Any]:
+    clip = load_or_prepare_clip(request.source_path)
+
+    ref_text = normalize_text(request.ref_text)
+    target_text = normalize_text(request.target_text)
+    if not ref_text:
+        raise HTTPException(status_code=400, detail="Reference text is required.")
+    if not target_text:
+        raise HTTPException(status_code=400, detail="Target text is required.")
+
+    start_sec, end_sec = clamp_window(clip.duration, request.start_sec, request.end_sec)
+    tmp_wav = save_window_to_temp(clip.cache_wav_path, start_sec, end_sec)
+    try:
+        model = RUNTIME.get_tts(request.model_name, request.device, request.dtype_name)
+        wavs, sr = model.generate_voice_clone(
+            text=target_text,
+            language="Chinese",
+            ref_audio=tmp_wav,
+            ref_text=ref_text,
+            x_vector_only_mode=False,
+            max_new_tokens=2048,
+            do_sample=True,
+            top_k=30,
+            top_p=0.95,
+            temperature=0.8,
+            repetition_penalty=1.05,
+            subtalker_dosample=True,
+            subtalker_top_k=30,
+            subtalker_top_p=0.95,
+            subtalker_temperature=0.8,
+        )
+    finally:
+        Path(tmp_wav).unlink(missing_ok=True)
+
+    output_name = f"voice-clone-lab-{torch.randint(0, 10_000_000, ()).item():07d}.wav"
+    output_path = OUTPUT_DIR / output_name
+    sf.write(output_path, wavs[0], sr)
+    return {
+        "output_name": output_name,
+        "output_url": f"/outputs/{output_name}",
+        "status": f"Generated from {start_sec:.2f}s to {end_sec:.2f}s using `{request.device}` / `{request.dtype_name}`",
+        "start_sec": start_sec,
+        "end_sec": end_sec,
+    }
+
+
+def _run_job(job_id: str, worker: Callable[[], dict[str, Any]]) -> None:
+    try:
+        result = worker()
+    except HTTPException as exc:
+        JOBS.update(job_id, status="error", progress=100, message=str(exc.detail), error=str(exc.detail))
+    except FileNotFoundError as exc:
+        JOBS.update(job_id, status="error", progress=100, message=str(exc), error=str(exc))
+    except subprocess.CalledProcessError as exc:
+        stderr = exc.stderr.strip() or exc.stdout.strip() or str(exc)
+        JOBS.update(job_id, status="error", progress=100, message=stderr, error=stderr)
+    except Exception as exc:
+        JOBS.update(job_id, status="error", progress=100, message=str(exc), error=str(exc))
+    else:
+        JOBS.update(job_id, status="done", progress=100, message="Complete.", result=result)
+
+
 def create_app() -> FastAPI:
     for required_binary in ("sox", "ffmpeg"):
         require_binary(required_binary)
@@ -345,6 +511,7 @@ def create_app() -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
     app.mount("/outputs", StaticFiles(directory=str(OUTPUT_DIR)), name="outputs")
+    app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
     @app.get("/")
     def index() -> FileResponse:
@@ -378,6 +545,7 @@ def create_app() -> FastAPI:
         return JSONResponse(
             {
                 "clip": asdict(clip),
+                "source_url": public_media_url(clip.source_path),
                 "waveform": asdict(overview),
                 "window": {
                     "start_sec": 0.0,
@@ -408,37 +576,48 @@ def create_app() -> FastAPI:
                     break
                 handle.write(chunk)
         await file.close()
-        return JSONResponse({"source_path": str(destination), "filename": destination.name})
+        return JSONResponse(
+            {
+                "source_path": str(destination),
+                "source_url": public_media_url(str(destination)),
+                "filename": destination.name,
+            }
+        )
 
     @app.post("/api/asr")
     def transcribe_window(request: AsrRequest) -> JSONResponse:
-        try:
+        job = JOBS.create("asr", "Queued ASR...")
+
+        def worker() -> dict[str, Any]:
+            JOBS.update(job.job_id, progress=5, message="Preparing clip...")
             clip = load_or_prepare_clip(request.source_path)
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
+            start_sec, end_sec = clamp_window(clip.duration, request.start_sec, request.end_sec)
+            JOBS.update(job.job_id, progress=20, message="Extracting selected window...")
+            tmp_wav = save_window_to_temp(clip.cache_wav_path, start_sec, end_sec)
+            try:
+                JOBS.update(job.job_id, progress=35, message="Loading ASR model...")
+                asr = RUNTIME.get_asr(request.asr_device)
+                JOBS.update(job.job_id, progress=55, message="Transcribing audio...")
+                result = asr(
+                    tmp_wav,
+                    chunk_length_s=25,
+                    batch_size=8,
+                    return_timestamps=True,
+                    generate_kwargs={"language": "zh"},
+                )
+            finally:
+                Path(tmp_wav).unlink(missing_ok=True)
 
-        start_sec, end_sec = clamp_window(clip.duration, request.start_sec, request.end_sec)
-        tmp_wav = save_window_to_temp(clip.cache_wav_path, start_sec, end_sec)
-        try:
-            asr = RUNTIME.get_asr(request.asr_device)
-            result = asr(
-                tmp_wav,
-                chunk_length_s=25,
-                batch_size=8,
-                return_timestamps=True,
-                generate_kwargs={"language": "zh"},
-            )
-        finally:
-            Path(tmp_wav).unlink(missing_ok=True)
-
-        return JSONResponse(
-            {
+            JOBS.update(job.job_id, progress=90, message="Finalizing transcript...")
+            return {
                 "text": normalize_text(result.get("text", "")),
                 "status": f"ASR complete for {start_sec:.2f}s to {end_sec:.2f}s",
                 "start_sec": start_sec,
                 "end_sec": end_sec,
             }
-        )
+
+        threading.Thread(target=lambda: _run_job(job.job_id, worker), daemon=True).start()
+        return JSONResponse(job_payload(job))
 
     @app.post("/api/preview")
     def preview_window(request: WindowRequest) -> StreamingResponse:
@@ -458,54 +637,67 @@ def create_app() -> FastAPI:
 
     @app.post("/api/generate")
     def generate_audio(request: GenerateRequest) -> JSONResponse:
-        try:
+        job = JOBS.create("generate", "Queued generation...")
+
+        def worker() -> dict[str, Any]:
+            JOBS.update(job.job_id, progress=5, message="Preparing clip...")
             clip = load_or_prepare_clip(request.source_path)
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-        ref_text = normalize_text(request.ref_text)
-        target_text = normalize_text(request.target_text)
-        if not ref_text:
-            raise HTTPException(status_code=400, detail="Reference text is required.")
-        if not target_text:
-            raise HTTPException(status_code=400, detail="Target text is required.")
+            ref_text = normalize_text(request.ref_text)
+            target_text = normalize_text(request.target_text)
+            if not ref_text:
+                raise HTTPException(status_code=400, detail="Reference text is required.")
+            if not target_text:
+                raise HTTPException(status_code=400, detail="Target text is required.")
 
-        start_sec, end_sec = clamp_window(clip.duration, request.start_sec, request.end_sec)
-        tmp_wav = save_window_to_temp(clip.cache_wav_path, start_sec, end_sec)
-        try:
-            model = RUNTIME.get_tts(request.model_name, request.device, request.dtype_name)
-            wavs, sr = model.generate_voice_clone(
-                text=target_text,
-                language="Chinese",
-                ref_audio=tmp_wav,
-                ref_text=ref_text,
-                x_vector_only_mode=False,
-                max_new_tokens=2048,
-                do_sample=True,
-                top_k=30,
-                top_p=0.95,
-                temperature=0.8,
-                repetition_penalty=1.05,
-                subtalker_dosample=True,
-                subtalker_top_k=30,
-                subtalker_top_p=0.95,
-                subtalker_temperature=0.8,
-            )
-        finally:
-            Path(tmp_wav).unlink(missing_ok=True)
+            start_sec, end_sec = clamp_window(clip.duration, request.start_sec, request.end_sec)
+            JOBS.update(job.job_id, progress=15, message="Extracting reference audio...")
+            tmp_wav = save_window_to_temp(clip.cache_wav_path, start_sec, end_sec)
+            try:
+                JOBS.update(job.job_id, progress=30, message="Loading TTS model...")
+                model = RUNTIME.get_tts(request.model_name, request.device, request.dtype_name)
+                JOBS.update(job.job_id, progress=45, message="Generating cloned audio...")
+                wavs, sr = model.generate_voice_clone(
+                    text=target_text,
+                    language="Chinese",
+                    ref_audio=tmp_wav,
+                    ref_text=ref_text,
+                    x_vector_only_mode=False,
+                    max_new_tokens=2048,
+                    do_sample=True,
+                    top_k=30,
+                    top_p=0.95,
+                    temperature=0.8,
+                    repetition_penalty=1.05,
+                    subtalker_dosample=True,
+                    subtalker_top_k=30,
+                    subtalker_top_p=0.95,
+                    subtalker_temperature=0.8,
+                )
+            finally:
+                Path(tmp_wav).unlink(missing_ok=True)
 
-        output_name = f"voice-clone-lab-{torch.randint(0, 10_000_000, ()).item():07d}.wav"
-        output_path = OUTPUT_DIR / output_name
-        sf.write(output_path, wavs[0], sr)
-        return JSONResponse(
-            {
+            JOBS.update(job.job_id, progress=90, message="Writing output file...")
+            output_name = f"voice-clone-lab-{torch.randint(0, 10_000_000, ()).item():07d}.wav"
+            output_path = OUTPUT_DIR / output_name
+            sf.write(output_path, wavs[0], sr)
+            return {
                 "output_name": output_name,
                 "output_url": f"/outputs/{output_name}",
                 "status": f"Generated from {start_sec:.2f}s to {end_sec:.2f}s using `{request.device}` / `{request.dtype_name}`",
                 "start_sec": start_sec,
                 "end_sec": end_sec,
             }
-        )
+
+        threading.Thread(target=lambda: _run_job(job.job_id, worker), daemon=True).start()
+        return JSONResponse(job_payload(job))
+
+    @app.get("/api/jobs/{job_id}")
+    def get_job(job_id: str) -> JSONResponse:
+        job = JOBS.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
+        return JSONResponse(job_payload(job))
 
     return app
 

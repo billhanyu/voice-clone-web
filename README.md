@@ -61,6 +61,16 @@ pip install .
 
 Then open `http://127.0.0.1:7861`.
 
+## Dev Run
+
+To run directly from `src/` without reinstalling after every edit:
+
+```powershell
+.\start-dev.ps1 --ip 127.0.0.1 --port 7861
+```
+
+This uses `.venv\Scripts\python.exe` and sets `PYTHONPATH` to `src` for the current process only.
+
 ## Notes
 
 - By default this app stays on CPU because that was the more reliable path in this Windows setup.

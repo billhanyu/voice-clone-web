@@ -23,6 +23,8 @@ const els = {
   endRange: document.getElementById("endRange"),
   windowStatus: document.getElementById("windowStatus"),
   previewBtn: document.getElementById("previewBtn"),
+  sourceVideo: document.getElementById("sourceVideo"),
+  sourceAudio: document.getElementById("sourceAudio"),
   previewAudio: document.getElementById("previewAudio"),
   asrBtn: document.getElementById("asrBtn"),
   refText: document.getElementById("refText"),
@@ -45,6 +47,41 @@ function setStatus(message) {
 
 function setWindowStatus(message) {
   els.windowStatus.textContent = message;
+}
+
+function resetSourcePlayers() {
+  [els.sourceVideo, els.sourceAudio].forEach((media) => {
+    media.pause();
+    media.removeAttribute("src");
+    media.classList.add("hidden");
+    media.load();
+  });
+}
+
+function setSourceMedia(sourcePath) {
+  resetSourcePlayers();
+  if (!sourcePath) return;
+
+  const lowerPath = sourcePath.toLowerCase();
+  const isVideo = [".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v"].some((ext) => lowerPath.endsWith(ext));
+  const player = isVideo ? els.sourceVideo : els.sourceAudio;
+  player.src = sourcePath;
+  player.classList.remove("hidden");
+  player.load();
+}
+
+async function pollJob(jobId, onUpdate) {
+  while (true) {
+    const response = await fetch(`/api/jobs/${jobId}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch job ${jobId}`);
+    }
+    const job = await response.json();
+    onUpdate(job);
+    if (job.status === "done") return job.result;
+    if (job.status === "error") throw new Error(job.error || job.message || "Job failed");
+    await new Promise((resolve) => window.setTimeout(resolve, 600));
+  }
 }
 
 async function postJson(url, payload) {
@@ -224,6 +261,7 @@ async function updatePreview() {
   if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
   state.previewUrl = URL.createObjectURL(blob);
   els.previewAudio.src = state.previewUrl;
+  els.previewAudio.load();
   setWindow(
     Number(response.headers.get("X-Start-Sec") || state.startSec),
     Number(response.headers.get("X-End-Sec") || state.endSec),
@@ -240,6 +278,7 @@ async function loadClipFromSource(sourcePath) {
   state.waveform = data.waveform;
   els.clipName.value = state.clip.source_path.split(/[\\/]/).pop();
   els.clipName.dataset.sourcePath = state.clip.source_path;
+  setSourceMedia(data.source_url);
   updateClipMeta();
   els.startRange.max = state.clip.duration;
   els.endRange.max = state.clip.duration;
@@ -266,21 +305,30 @@ async function handleFileSelection() {
 
 async function runAsr() {
   if (!state.clip) return;
-  setStatus("Running ASR...");
-  const response = await postJson("/api/asr", {
-    source_path: state.clip.source_path,
-    start_sec: state.startSec,
-    end_sec: state.endSec,
-    asr_device: els.asrDevice.value,
-  });
-  const data = await response.json();
-  els.refText.value = data.text;
-  setStatus(data.status);
+  const previousRefText = els.refText.value;
+  els.refText.value = "Running ASR... 0%";
+  try {
+    const response = await postJson("/api/asr", {
+      source_path: state.clip.source_path,
+      start_sec: state.startSec,
+      end_sec: state.endSec,
+      asr_device: els.asrDevice.value,
+    });
+    const job = await response.json();
+    const data = await pollJob(job.job_id, (nextJob) => {
+      els.refText.value = `${nextJob.message} ${nextJob.progress}%`;
+      setStatus(`ASR: ${nextJob.progress}%`);
+    });
+    els.refText.value = data.text;
+    setStatus(data.status);
+  } catch (error) {
+    els.refText.value = previousRefText;
+    throw error;
+  }
 }
 
 async function generateAudio() {
   if (!state.clip) return;
-  setStatus("Generating cloned audio...");
   const response = await postJson("/api/generate", {
     source_path: state.clip.source_path,
     start_sec: state.startSec,
@@ -291,8 +339,12 @@ async function generateAudio() {
     device: els.genDevice.value,
     dtype_name: els.genDtype.value,
   });
-  const data = await response.json();
+  const job = await response.json();
+  const data = await pollJob(job.job_id, (nextJob) => {
+    setStatus(`Generation: ${nextJob.progress}%`);
+  });
   els.generatedAudio.src = data.output_url;
+  els.generatedAudio.load();
   els.savedWavLink.href = data.output_url;
   els.savedWavLink.classList.remove("hidden");
   setStatus(data.status);
@@ -309,6 +361,11 @@ function refreshStatusOnly() {
 function applyNumericInputs() {
   setWindow(Number(els.startNumber.value), Number(els.endNumber.value));
   refreshStatusOnly();
+}
+
+async function commitNumericInputs() {
+  applyNumericInputs();
+  await updatePreview();
 }
 
 function nudgeWindow(delta) {
@@ -349,9 +406,10 @@ function bindWaveformDrag() {
     state.drag.currentX = canvasX(event);
     const next = windowFromPixels(state.drag.startX, state.drag.currentX);
     state.drag.active = false;
+    els.waveformCanvas.releasePointerCapture(event.pointerId);
     setWindow(next.startSec, next.endSec);
     renderWaveform();
-    await updatePreview();
+    await updatePreview().catch((error) => setStatus(error.message));
   });
 
   els.waveformCanvas.addEventListener("pointercancel", () => {
@@ -377,8 +435,16 @@ async function boot() {
   els.asrBtn.addEventListener("click", () => runAsr().catch((error) => setStatus(error.message)));
   els.generateBtn.addEventListener("click", () => generateAudio().catch((error) => setStatus(error.message)));
 
-  els.startNumber.addEventListener("change", applyNumericInputs);
-  els.endNumber.addEventListener("change", applyNumericInputs);
+  [els.startNumber, els.endNumber].forEach((input) => {
+    input.addEventListener("change", () => commitNumericInputs().catch((error) => setStatus(error.message)));
+    input.addEventListener("blur", () => commitNumericInputs().catch((error) => setStatus(error.message)));
+    input.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      input.blur();
+    });
+  });
+
   els.startRange.addEventListener("input", () => {
     setWindow(Number(els.startRange.value), state.endSec);
     refreshStatusOnly();

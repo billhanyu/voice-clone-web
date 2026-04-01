@@ -62,16 +62,23 @@
         <section class="panel audio-panel">
           <div>
             <div class="panel-header">
+              <h2>Source Media</h2>
+            </div>
+            <video id="sourceVideo" controls class="hidden media-player"></video>
+            <audio id="sourceAudio" controls class="hidden media-player"></audio>
+          </div>
+          <div>
+            <div class="panel-header">
               <h2>Reference Preview</h2>
             </div>
-            <audio id="previewAudio" controls></audio>
+            <audio id="previewAudio" controls class="media-player"></audio>
           </div>
           <div>
             <div class="panel-header">
               <h2>Generated Audio</h2>
               <a id="savedWavLink" href="#" target="_blank" rel="noopener" class="muted hidden">Open WAV</a>
             </div>
-            <audio id="generatedAudio" controls></audio>
+            <audio id="generatedAudio" controls class="media-player"></audio>
           </div>
         </section>
 
