@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Voice Clone Web</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="page-header">
+      <div>
+        <h1>Voice Clone Web</h1>
+        <p>Tune a reference window from a long clip, run auto-ASR with manual override, then generate new Chinese audio.</p>
+      </div>
+      <button id="loadClipBtn" class="primary">Choose Clip</button>
+    </header>
+
+    <div class="layout">
+      <main class="main-column">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Waveform</h2>
+            <span id="windowStatus" class="muted">Choose a clip to begin.</span>
+          </div>
+          <div class="waveform-shell">
+            <canvas id="waveformCanvas" width="1400" height="280"></canvas>
+          </div>
+          <div class="hint-row">
+            <span>Drag to set start and end directly.</span>
+            <span>Single click recenters the current width.</span>
+          </div>
+          <div class="control-grid">
+            <label>
+              <span>Start</span>
+              <input id="startNumber" type="number" min="0" step="0.05">
+            </label>
+            <label>
+              <span>End</span>
+              <input id="endNumber" type="number" min="0.1" step="0.05">
+            </label>
+            <label class="range-wrap">
+              <span>Start slider</span>
+              <input id="startRange" type="range" min="0" max="10" step="0.05">
+            </label>
+            <label class="range-wrap">
+              <span>End slider</span>
+              <input id="endRange" type="range" min="0.1" max="10" step="0.05">
+            </label>
+          </div>
+          <div class="button-row">
+            <button data-nudge="-1.0">-1.0s</button>
+            <button data-nudge="-0.2">-0.2s</button>
+            <button data-nudge="0.2">+0.2s</button>
+            <button data-nudge="1.0">+1.0s</button>
+            <button id="narrowerBtn">Narrower</button>
+            <button id="widerBtn">Wider</button>
+            <button id="previewBtn">Preview</button>
+          </div>
+        </section>
+
+        <section class="panel audio-panel">
+          <div>
+            <div class="panel-header">
+              <h2>Reference Preview</h2>
+            </div>
+            <audio id="previewAudio" controls></audio>
+          </div>
+          <div>
+            <div class="panel-header">
+              <h2>Generated Audio</h2>
+              <a id="savedWavLink" href="#" target="_blank" rel="noopener" class="muted hidden">Open WAV</a>
+            </div>
+            <audio id="generatedAudio" controls></audio>
+          </div>
+        </section>
+
+        <section class="panel text-panel">
+          <div>
+            <div class="panel-header">
+              <h2>Reference Text</h2>
+              <button id="asrBtn">Auto ASR</button>
+            </div>
+            <textarea id="refText" rows="5" placeholder="Auto-ASR result or manual override"></textarea>
+          </div>
+          <div>
+            <div class="panel-header">
+              <h2>Target Text</h2>
+            </div>
+            <textarea id="targetText" rows="5"></textarea>
+          </div>
+        </section>
+
+        <section class="panel actions-panel">
+          <button id="generateBtn" class="primary">Generate New Audio</button>
+          <div id="statusBox" class="status-box">Ready.</div>
+        </section>
+      </main>
+
+      <aside class="side-column">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Source</h2>
+          </div>
+          <input id="clipFileInput" type="file" accept="audio/*,video/*" class="hidden">
+          <label>
+            <span>Selected clip</span>
+            <input id="clipName" type="text" readonly placeholder="No clip selected">
+          </label>
+          <div id="clipMeta" class="meta-list"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Runtime</h2>
+          </div>
+          <label>
+            <span>ASR device</span>
+            <select id="asrDevice">
+              <option value="cpu">cpu</option>
+              <option value="cuda:0">cuda:0</option>
+            </select>
+          </label>
+          <label>
+            <span>Generation device</span>
+            <select id="genDevice">
+              <option value="cpu">cpu</option>
+              <option value="cuda:0">cuda:0</option>
+            </select>
+          </label>
+          <label>
+            <span>Generation dtype</span>
+            <select id="genDtype">
+              <option value="float32">float32</option>
+              <option value="float16">float16</option>
+              <option value="bfloat16">bfloat16</option>
+            </select>
+          </label>
+          <label>
+            <span>Model</span>
+            <input id="modelName" type="text">
+          </label>
+        </section>
+      </aside>
+    </div>
+  </div>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
