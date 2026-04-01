@@ -17,7 +17,32 @@ This repo intentionally does not include sample source clips, generated audio, c
 
 - Python 3.11+
 - `ffmpeg` available on `PATH`
+- `sox` available on `PATH`
 - Enough disk space for uploaded media and extracted 24 kHz WAV cache files
+
+The Python dependency file should not vendor `ffmpeg` or `sox`: they are native command-line tools, not Python packages. Install them separately, or set `FFMPEG_DIR` / `SOX_DIR` to the directory that contains each executable.
+
+### Install System Tools
+
+Windows:
+
+```powershell
+winget install ffmpeg
+winget install sox
+```
+
+macOS:
+
+```bash
+brew install ffmpeg sox
+```
+
+Ubuntu/Debian:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ffmpeg sox
+```
 
 ## Install
 
@@ -25,7 +50,7 @@ This repo intentionally does not include sample source clips, generated audio, c
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install --upgrade pip
-pip install -e .
+pip install .
 ```
 
 ## Run
@@ -41,3 +66,4 @@ Then open `http://127.0.0.1:7861`.
 - By default this app stays on CPU because that was the more reliable path in this Windows setup.
 - Uploaded clips, extracted cache WAVs, and generated outputs are written under `data/` and ignored by git.
 - `Qwen3-TTS` is consumed as a dependency instead of vendoring or modifying its repo here.
+- On startup, the app checks for both `sox` and `ffmpeg` and will fail fast with install hints if either one is missing.

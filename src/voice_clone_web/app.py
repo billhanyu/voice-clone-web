@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import io
 import os
+import platform
 import shutil
 import subprocess
 import tempfile
@@ -21,18 +22,93 @@ from pydantic import BaseModel
 from transformers import pipeline
 
 
-def ensure_sox_on_path() -> None:
-    if shutil.which("sox"):
+def prepend_to_path(path: Path) -> None:
+    os.environ["PATH"] = f"{path}{os.pathsep}{os.environ.get('PATH', '')}"
+
+
+def iter_binary_search_dirs(binary_name: str) -> list[Path]:
+    candidates: list[Path] = []
+    seen: set[Path] = set()
+
+    def add(path: Path | None) -> None:
+        if path is None:
+            return
+        candidate = path.expanduser()
+        if candidate in seen or not candidate.exists():
+            return
+        seen.add(candidate)
+        candidates.append(candidate)
+
+    env_dir = os.environ.get(f"{binary_name.upper()}_DIR")
+    if env_dir:
+        add(Path(env_dir))
+
+    system = platform.system()
+    home = Path.home()
+    if system == "Windows":
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            winget_packages = Path(local_app_data) / "Microsoft" / "WinGet" / "Packages"
+            if winget_packages.exists():
+                package_patterns = ("*SoX*", "*FFmpeg*") if binary_name == "sox" else ("*FFmpeg*",)
+                for pattern in package_patterns:
+                    for package_dir in winget_packages.glob(pattern):
+                        add(package_dir)
+                        for child in package_dir.rglob("*"):
+                            if child.is_dir():
+                                add(child)
+        for path_var in ("ProgramFiles", "ProgramFiles(x86)"):
+            program_files = os.environ.get(path_var)
+            if not program_files:
+                continue
+            root = Path(program_files)
+            add(root / "sox")
+            add(root / "ffmpeg" / "bin")
+    else:
+        add(Path("/usr/local/bin"))
+        add(Path("/opt/homebrew/bin"))
+        add(Path("/opt/local/bin"))
+        add(home / ".local" / "bin")
+
+    return candidates
+
+
+def ensure_binary_on_path(binary_name: str) -> None:
+    if shutil.which(binary_name):
         return
 
-    candidate = Path(
-        r"C:\Users\billy\AppData\Local\Microsoft\WinGet\Packages\ChrisBagwell.SoX_Microsoft.Winget.Source_8wekyb3d8bbwe\sox-14.4.2"
-    )
-    if candidate.exists():
-        os.environ["PATH"] = f"{candidate};{os.environ.get('PATH', '')}"
+    executable = f"{binary_name}.exe" if os.name == "nt" else binary_name
+    for directory in iter_binary_search_dirs(binary_name):
+        if (directory / executable).exists():
+            prepend_to_path(directory)
+            return
 
 
-ensure_sox_on_path()
+def require_binary(binary_name: str) -> None:
+    ensure_binary_on_path(binary_name)
+    if shutil.which(binary_name):
+        return
+
+    if os.name == "nt":
+        install_hint = (
+            f"Install it with `winget install {binary_name}` or point `{binary_name.upper()}_DIR` "
+            "at the directory containing the executable."
+        )
+    elif platform.system() == "Darwin":
+        install_hint = (
+            f"Install it with `brew install {binary_name}` or point `{binary_name.upper()}_DIR` "
+            "at the directory containing the executable."
+        )
+    else:
+        install_hint = (
+            f"Install it with your package manager or point `{binary_name.upper()}_DIR` "
+            "at the directory containing the executable."
+        )
+    raise RuntimeError(f"Required binary `{binary_name}` was not found on PATH. {install_hint}")
+
+
+for required_binary in ("sox", "ffmpeg"):
+    ensure_binary_on_path(required_binary)
 
 from qwen_tts import Qwen3TTSModel
 
@@ -260,6 +336,9 @@ def save_window_to_temp(cache_wav_path: str, start_sec: float, end_sec: float) -
 
 
 def create_app() -> FastAPI:
+    for required_binary in ("sox", "ffmpeg"):
+        require_binary(required_binary)
+
     app = FastAPI(title="Qwen Voice Clone Lab")
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
