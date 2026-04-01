@@ -11,16 +11,42 @@
     <header class="page-header">
       <div>
         <h1>Voice Clone Web</h1>
-        <p>Tune a reference window from a long clip, run auto-ASR with manual override, then generate new Chinese audio.</p>
+        <p>Tune a reference window from a long clip, run auto-ASR with manual override, then generate new cloned audio.</p>
       </div>
       <button id="loadClipBtn" class="primary">Choose Clip</button>
     </header>
 
-    <div class="layout">
+    <div class="single-column">
+      <section class="panel source-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Source Clip</h2>
+            <p class="panel-subtitle">Load a reference audio or video clip, then pick the window you want to clone from.</p>
+          </div>
+        </div>
+        <input id="clipFileInput" type="file" accept="audio/*,video/*" class="hidden">
+        <div class="source-grid">
+          <label>
+            <span>Selected clip</span>
+            <input id="clipName" type="text" readonly placeholder="No clip selected">
+          </label>
+          <div class="meta-list compact-meta workflow-box">
+            1. Choose a source clip.
+            2. Drag a reference window on the timeline.
+            3. Run ASR or type the reference text manually.
+            4. Enter the target text and generate.
+          </div>
+        </div>
+        <div id="clipMeta" class="meta-list"></div>
+      </section>
+
       <main class="main-column">
         <section class="panel">
           <div class="panel-header">
-            <h2>Waveform</h2>
+            <div>
+              <h2>Reference Timeline</h2>
+              <p class="panel-subtitle">Pick the source window you want to clone from.</p>
+            </div>
             <span id="windowStatus" class="muted">Choose a clip to begin.</span>
           </div>
           <div class="hidden-media">
@@ -52,8 +78,8 @@
             <canvas id="waveformCanvas" width="1400" height="280"></canvas>
           </div>
           <div class="hint-row">
-            <span>Scroll to zoom around the pointer. Click to seek. Drag to set the reference window.</span>
-            <span>Use the scrub bar to pan long clips.</span>
+            <span>Click to seek. Drag to create a window. Drag an edge to fine-tune only one side.</span>
+            <span>Scroll up or down to zoom. Scroll sideways or use the scrub bar to pan long clips.</span>
           </div>
           <div class="viewport-row">
             <input id="viewportScroll" type="range" min="0" max="1000" step="1" value="0" aria-label="Timeline viewport scroll">
@@ -93,83 +119,52 @@
           </div>
         </section>
 
-        <section class="panel audio-panel">
-          <div>
-            <div class="panel-header">
-              <h2>Generated Audio</h2>
-              <a id="savedWavLink" href="#" target="_blank" rel="noopener" class="muted hidden">Open WAV</a>
-            </div>
-            <audio id="generatedAudio" controls class="media-player"></audio>
-          </div>
-        </section>
-
-        <section class="panel text-panel">
-          <div>
+        <section class="text-grid">
+          <section class="panel">
             <div class="panel-header">
               <h2>Reference Text</h2>
-              <button id="asrBtn">Auto ASR</button>
+              <div class="header-actions">
+                <select id="referenceLanguageSelect" class="inline-select" aria-label="Reference language"></select>
+                <button id="asrBtn">Auto ASR</button>
+              </div>
             </div>
             <textarea id="refText" rows="5" placeholder="Auto-ASR result or manual override"></textarea>
-          </div>
-          <div>
+          </section>
+
+          <section class="panel">
             <div class="panel-header">
               <h2>Target Text</h2>
+              <select id="outputLanguageSelect" class="inline-select" aria-label="Output language"></select>
             </div>
             <textarea id="targetText" rows="5"></textarea>
-          </div>
+          </section>
         </section>
 
         <section class="panel actions-panel">
-          <button id="generateBtn" class="primary">Generate New Audio</button>
-          <div id="statusBox" class="status-box">Ready.</div>
+          <div class="generate-grid">
+            <div class="panel-header">
+              <div>
+                <h2>Generate</h2>
+                <p class="panel-subtitle">Run ASR on the selected reference window, then generate the new line.</p>
+              </div>
+            </div>
+            <div class="generate-main">
+              <div id="validationBox" class="validation-box">
+                Load a clip to enable ASR and generation.
+              </div>
+              <button id="generateBtn" class="primary">Generate New Audio</button>
+              <div id="statusBox" class="status-box">Ready.</div>
+            </div>
+            <div class="generate-output">
+              <div class="panel-header">
+                <h2>Generated Audio</h2>
+                <a id="savedWavLink" href="#" target="_blank" rel="noopener" class="muted hidden">Open WAV</a>
+              </div>
+              <audio id="generatedAudio" controls class="media-player"></audio>
+            </div>
+          </div>
         </section>
       </main>
-
-      <aside class="side-column">
-        <section class="panel">
-          <div class="panel-header">
-            <h2>Source</h2>
-          </div>
-          <input id="clipFileInput" type="file" accept="audio/*,video/*" class="hidden">
-          <label>
-            <span>Selected clip</span>
-            <input id="clipName" type="text" readonly placeholder="No clip selected">
-          </label>
-          <div id="clipMeta" class="meta-list"></div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-header">
-            <h2>Runtime</h2>
-          </div>
-          <label>
-            <span>ASR device</span>
-            <select id="asrDevice">
-              <option value="cpu">cpu</option>
-              <option value="cuda:0">cuda:0</option>
-            </select>
-          </label>
-          <label>
-            <span>Generation device</span>
-            <select id="genDevice">
-              <option value="cpu">cpu</option>
-              <option value="cuda:0">cuda:0</option>
-            </select>
-          </label>
-          <label>
-            <span>Generation dtype</span>
-            <select id="genDtype">
-              <option value="float32">float32</option>
-              <option value="float16">float16</option>
-              <option value="bfloat16">bfloat16</option>
-            </select>
-          </label>
-          <label>
-            <span>Model</span>
-            <input id="modelName" type="text">
-          </label>
-        </section>
-      </aside>
     </div>
   </div>
 

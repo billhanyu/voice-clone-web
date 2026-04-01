@@ -1,6 +1,11 @@
 const state = {
   clip: null,
   waveform: null,
+  runtimeDefaults: {
+    device: "cpu",
+    dtype: "float32",
+    model: "",
+  },
   sourceUrl: null,
   localSourceUrl: null,
   sourceKind: null,
@@ -49,18 +54,89 @@ const els = {
   generatedAudio: document.getElementById("generatedAudio"),
   savedWavLink: document.getElementById("savedWavLink"),
   statusBox: document.getElementById("statusBox"),
-  asrDevice: document.getElementById("asrDevice"),
-  genDevice: document.getElementById("genDevice"),
-  genDtype: document.getElementById("genDtype"),
-  modelName: document.getElementById("modelName"),
+  referenceLanguageSelect: document.getElementById("referenceLanguageSelect"),
+  outputLanguageSelect: document.getElementById("outputLanguageSelect"),
+  validationBox: document.getElementById("validationBox"),
 };
 
-function setStatus(message) {
+function setStatus(message, tone = "info") {
   els.statusBox.textContent = message;
+  els.statusBox.dataset.tone = tone;
 }
 
 function setWindowStatus(message) {
   els.windowStatus.textContent = message;
+}
+
+function selectedReferenceLanguage() {
+  return els.referenceLanguageSelect.value || "zh";
+}
+
+function selectedOutputLanguage() {
+  return els.outputLanguageSelect.value || "zh";
+}
+
+function clipLoaded() {
+  return Boolean(state.clip && state.waveform);
+}
+
+function hasWindowSelection() {
+  return clipLoaded() && Number.isFinite(state.startSec) && Number.isFinite(state.endSec) && state.endSec - state.startSec >= 0.1;
+}
+
+function validationMessage() {
+  if (!clipLoaded()) {
+    return "Load a clip to enable ASR and generation.";
+  }
+  if (!hasWindowSelection()) {
+    return "Create a reference window on the timeline before running ASR or generation.";
+  }
+  const refText = els.refText.value.trim();
+  const targetText = els.targetText.value.trim();
+  if (!refText && !targetText) {
+    return "Add reference text and target text to generate audio.";
+  }
+  if (!refText) {
+    return "Reference text is empty. Run ASR or type the spoken reference line.";
+  }
+  if (!targetText) {
+    return "Target text is empty. Add the line you want the clone to speak.";
+  }
+  return "Ready to generate.";
+}
+
+function updateActionAvailability() {
+  const readyForAsr = clipLoaded() && hasWindowSelection();
+  const readyForGenerate = readyForAsr && Boolean(els.refText.value.trim()) && Boolean(els.targetText.value.trim());
+  els.asrBtn.disabled = !readyForAsr;
+  els.generateBtn.disabled = !readyForGenerate;
+  els.windowPlayBtn.disabled = !readyForAsr;
+  els.sourcePlayBtn.disabled = !clipLoaded();
+  els.zoomInBtn.disabled = !clipLoaded();
+  els.zoomOutBtn.disabled = !clipLoaded();
+  els.zoomToWindowBtn.disabled = !readyForAsr;
+  els.fitAllBtn.disabled = !clipLoaded();
+  els.validationBox.textContent = validationMessage();
+  els.validationBox.dataset.state = readyForGenerate ? "ready" : "needs-attention";
+}
+
+function requireClip(actionLabel) {
+  if (clipLoaded()) return true;
+  setStatus(`${actionLabel} needs a source clip first. Choose a clip to continue.`, "error");
+  return false;
+}
+
+function requireWindow(actionLabel) {
+  if (!requireClip(actionLabel)) return false;
+  if (hasWindowSelection()) return true;
+  setStatus(`${actionLabel} needs a reference window. Drag on the timeline to select one.`, "error");
+  return false;
+}
+
+function requireTextValue(value, actionLabel, missingMessage) {
+  if (value.trim()) return true;
+  setStatus(`${actionLabel} ${missingMessage}`, "error");
+  return false;
 }
 
 function activeSourcePlayer() {
@@ -156,6 +232,7 @@ function setSourceMedia(sourcePath) {
   els.playbackStatus.textContent = "Source ready.";
   els.sourcePlayBtn.classList.remove("is-active");
   els.windowPlayBtn.classList.remove("is-active");
+  updateActionAvailability();
 }
 
 async function pollJob(jobId, onUpdate) {
@@ -442,6 +519,8 @@ async function loadClipFromSource(sourcePath, sourceMediaUrl = null) {
   setWindowStatus(data.window.status);
   renderWaveform();
   seekSourceMedia(data.window.start_sec);
+  updateActionAvailability();
+  setStatus("Clip loaded. Drag the timeline to refine the reference window.");
 }
 
 async function chooseClip() {
@@ -462,7 +541,7 @@ async function handleFileSelection() {
 }
 
 async function runAsr() {
-  if (!state.clip) return;
+  if (!requireWindow("Auto ASR")) return;
   const previousRefText = els.refText.value;
   els.refText.value = "Running ASR... 0%";
   try {
@@ -470,7 +549,8 @@ async function runAsr() {
       source_path: state.clip.source_path,
       start_sec: state.startSec,
       end_sec: state.endSec,
-      asr_device: els.asrDevice.value,
+      asr_device: state.runtimeDefaults.device,
+      reference_language: selectedReferenceLanguage(),
     });
     const job = await response.json();
     const data = await pollJob(job.job_id, (nextJob) => {
@@ -479,23 +559,29 @@ async function runAsr() {
     });
     els.refText.value = data.text;
     setStatus(data.status);
+    updateActionAvailability();
   } catch (error) {
     els.refText.value = previousRefText;
+    updateActionAvailability();
     throw error;
   }
 }
 
 async function generateAudio() {
-  if (!state.clip) return;
+  if (!requireWindow("Generate")) return;
+  if (!requireTextValue(els.refText.value, "Generate", "needs reference text first.")) return;
+  if (!requireTextValue(els.targetText.value, "Generate", "needs target text first.")) return;
   const response = await postJson("/api/generate", {
     source_path: state.clip.source_path,
     start_sec: state.startSec,
     end_sec: state.endSec,
     ref_text: els.refText.value,
     target_text: els.targetText.value,
-    model_name: els.modelName.value,
-    device: els.genDevice.value,
-    dtype_name: els.genDtype.value,
+    model_name: state.runtimeDefaults.model,
+    device: state.runtimeDefaults.device,
+    dtype_name: state.runtimeDefaults.dtype,
+    reference_language: selectedReferenceLanguage(),
+    output_language: selectedOutputLanguage(),
   });
   const job = await response.json();
   const data = await pollJob(job.job_id, (nextJob) => {
@@ -514,6 +600,7 @@ function refreshStatusOnly() {
     `Previewing ${formatSeconds(state.startSec)}s to ${formatSeconds(state.endSec)}s ` +
     `(${formatSeconds(state.endSec - state.startSec)}s window of ${formatSeconds(state.clip.duration)}s clip)`
   );
+  updateActionAvailability();
 }
 
 function applyNumericInputs() {
@@ -531,7 +618,7 @@ function resizeWindow(factor) {
 }
 
 function zoomViewport(factor) {
-  if (!state.clip) return;
+  if (!requireClip("Zoom")) return;
   const currentWidth = Math.max(1.5, state.viewportEndSec - state.viewportStartSec);
   const center = (state.startSec + state.endSec) / 2;
   const nextWidth = Math.min(state.clip.duration, Math.max(1.5, currentWidth * factor));
@@ -539,13 +626,13 @@ function zoomViewport(factor) {
 }
 
 function zoomViewportToWindow() {
-  if (!state.clip) return;
+  if (!requireWindow("Zoom to selection")) return;
   const padding = Math.max(0.5, (state.endSec - state.startSec) * 0.35);
   setViewport(state.startSec - padding, state.endSec + padding);
 }
 
 function zoomAroundTime(anchorSec, factor) {
-  if (!state.clip) return;
+  if (!clipLoaded()) return;
   const currentWidth = Math.max(1.5, state.viewportEndSec - state.viewportStartSec);
   const nextWidth = Math.min(state.clip.duration, Math.max(1.5, currentWidth * factor));
   const ratio = currentWidth <= 0 ? 0.5 : (anchorSec - state.viewportStartSec) / currentWidth;
@@ -554,7 +641,7 @@ function zoomAroundTime(anchorSec, factor) {
 }
 
 function panViewportByPixels(deltaPixels) {
-  if (!state.clip) return;
+  if (!clipLoaded()) return;
   state.autoFollowPlayback = false;
   const widthPx = Math.max(els.waveformCanvas.clientWidth || 1, 1);
   const visibleDuration = Math.max(state.viewportEndSec - state.viewportStartSec, 1.5);
@@ -564,7 +651,7 @@ function panViewportByPixels(deltaPixels) {
 }
 
 function canPanViewport(direction) {
-  if (!state.clip) return false;
+  if (!clipLoaded()) return false;
   if (direction < 0) {
     return state.viewportStartSec > 0.001;
   }
@@ -597,7 +684,10 @@ function updateWaveformCursor(x) {
 
 function bindWaveformDrag() {
   els.waveformCanvas.addEventListener("pointerdown", (event) => {
-    if (!state.waveform) return;
+    if (!state.waveform) {
+      setStatus("Load a clip first, then drag on the timeline to create a reference window.", "error");
+      return;
+    }
     state.drag.active = true;
     state.drag.startX = canvasX(event);
     state.drag.currentX = state.drag.startX;
@@ -703,11 +793,27 @@ function bindSourcePlayback() {
 
 async function boot() {
   const defaults = await fetch("/api/defaults").then((response) => response.json());
+  els.referenceLanguageSelect.innerHTML = "";
+  els.outputLanguageSelect.innerHTML = "";
+  defaults.language_options.forEach((option) => {
+    const referenceOption = document.createElement("option");
+    referenceOption.value = option.value;
+    referenceOption.textContent = option.label;
+    els.referenceLanguageSelect.appendChild(referenceOption);
+
+    const outputOption = document.createElement("option");
+    outputOption.value = option.value;
+    outputOption.textContent = option.label;
+    outputOption.dataset.defaultTargetText = option.default_target_text;
+    els.outputLanguageSelect.appendChild(outputOption);
+  });
+  els.referenceLanguageSelect.value = defaults.default_reference_language;
+  els.outputLanguageSelect.value = defaults.default_output_language;
   els.targetText.value = defaults.default_target_text;
-  els.modelName.value = defaults.default_model;
-  els.asrDevice.value = defaults.default_device;
-  els.genDevice.value = defaults.default_device;
-  els.genDtype.value = defaults.default_dtype;
+  state.runtimeDefaults.model = defaults.default_model;
+  state.runtimeDefaults.device = defaults.default_device;
+  state.runtimeDefaults.dtype = defaults.default_dtype;
+  updateActionAvailability();
 
   bindWaveformDrag();
   bindSourcePlayback();
@@ -735,7 +841,10 @@ async function boot() {
   els.generateBtn.addEventListener("click", () => generateAudio().catch((error) => setStatus(error.message)));
   els.sourcePlayBtn.addEventListener("click", () => {
     const media = activeSourcePlayer();
-    if (!media) return;
+    if (!media) {
+      requireClip("Playback");
+      return;
+    }
     if (media.paused) {
       resumePlayback();
       return;
@@ -743,6 +852,7 @@ async function boot() {
     media.pause();
   });
   els.windowPlayBtn.addEventListener("click", () => {
+    if (!requireWindow("Window playback")) return;
     const media = activeSourcePlayer();
     if (!media) return;
     const isActiveWindowPlayback = state.playbackMode === "window" && !media.paused;
@@ -759,7 +869,7 @@ async function boot() {
   els.zoomToWindowBtn.addEventListener("click", () => zoomViewportToWindow());
   els.fitAllBtn.addEventListener("click", () => fitViewportToClip());
   els.viewportScroll.addEventListener("input", () => {
-    if (!state.clip) return;
+    if (!clipLoaded()) return;
     state.autoFollowPlayback = false;
     const width = Math.max(1.5, state.viewportEndSec - state.viewportStartSec);
     const maxOffset = Math.max(state.clip.duration - width, 0);
@@ -767,6 +877,18 @@ async function boot() {
     const start = maxOffset * ratio;
     setViewport(start, start + width);
   });
+  els.outputLanguageSelect.addEventListener("change", () => {
+    const option = els.outputLanguageSelect.selectedOptions[0];
+    if (!option) return;
+    const previousValue = els.targetText.value.trim();
+    const knownDefaults = defaults.language_options.map((entry) => entry.default_target_text.trim());
+    if (!previousValue || knownDefaults.includes(previousValue)) {
+      els.targetText.value = option.dataset.defaultTargetText || "";
+    }
+    updateActionAvailability();
+  });
+  els.refText.addEventListener("input", updateActionAvailability);
+  els.targetText.addEventListener("input", updateActionAvailability);
 
   [els.startNumber, els.endNumber].forEach((input) => {
     input.addEventListener("change", applyNumericInputs);

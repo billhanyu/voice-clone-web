@@ -126,6 +126,33 @@ WEB_DIR = PACKAGE_DIR / "web"
 DEFAULT_TARGET_TEXT = "今天的实验开始了。我们先测试这段中文声音克隆，听一下相似度和自然度。"
 DEFAULT_MODEL = "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
 ASR_MODEL = "openai/whisper-small"
+LANGUAGE_OPTIONS = {
+    "zh": {
+        "label": "Chinese",
+        "tts_label": "Chinese",
+        "asr_label": "zh",
+        "default_target_text": DEFAULT_TARGET_TEXT,
+    },
+    "en": {
+        "label": "English",
+        "tts_label": "English",
+        "asr_label": "en",
+        "default_target_text": "The test starts now. We will first try this voice clone and listen for similarity and naturalness.",
+    },
+    "ja": {
+        "label": "Japanese",
+        "tts_label": "Japanese",
+        "asr_label": "ja",
+        "default_target_text": "Today we begin the experiment. First we will test this voice clone and listen for similarity and naturalness.",
+    },
+    "ko": {
+        "label": "Korean",
+        "tts_label": "Korean",
+        "asr_label": "ko",
+        "default_target_text": "Today we begin the experiment. First we will test this voice clone and listen for similarity and naturalness.",
+    },
+}
+DEFAULT_LANGUAGE = "zh"
 
 
 @dataclass
@@ -260,6 +287,7 @@ class WindowRequest(BaseModel):
 
 class AsrRequest(WindowRequest):
     asr_device: str = "cpu"
+    reference_language: str = DEFAULT_LANGUAGE
 
 
 class GenerateRequest(WindowRequest):
@@ -268,6 +296,8 @@ class GenerateRequest(WindowRequest):
     model_name: str = DEFAULT_MODEL
     device: str = "cpu"
     dtype_name: str = "float32"
+    reference_language: str = DEFAULT_LANGUAGE
+    output_language: str = DEFAULT_LANGUAGE
 
 
 def job_payload(job: ProgressJob) -> dict[str, Any]:
@@ -280,6 +310,10 @@ def job_payload(job: ProgressJob) -> dict[str, Any]:
         "result": job.result,
         "error": job.error,
     }
+
+
+def language_config(language: str) -> dict[str, str]:
+    return LANGUAGE_OPTIONS.get(language, LANGUAGE_OPTIONS[DEFAULT_LANGUAGE])
 
 
 def normalize_text(text: str) -> str:
@@ -419,6 +453,7 @@ def transcribe_window_sync(request: AsrRequest) -> dict[str, Any]:
     clip = load_or_prepare_clip(request.source_path)
     start_sec, end_sec = clamp_window(clip.duration, request.start_sec, request.end_sec)
     tmp_wav = save_window_to_temp(clip.cache_wav_path, start_sec, end_sec)
+    config = language_config(request.reference_language)
     try:
         asr = RUNTIME.get_asr(request.asr_device)
         result = asr(
@@ -426,7 +461,7 @@ def transcribe_window_sync(request: AsrRequest) -> dict[str, Any]:
             chunk_length_s=25,
             batch_size=8,
             return_timestamps=True,
-            generate_kwargs={"language": "zh"},
+            generate_kwargs={"language": config["asr_label"]},
         )
     finally:
         Path(tmp_wav).unlink(missing_ok=True)
@@ -441,6 +476,7 @@ def transcribe_window_sync(request: AsrRequest) -> dict[str, Any]:
 
 def generate_audio_sync(request: GenerateRequest) -> dict[str, Any]:
     clip = load_or_prepare_clip(request.source_path)
+    config = language_config(request.output_language)
 
     ref_text = normalize_text(request.ref_text)
     target_text = normalize_text(request.target_text)
@@ -455,7 +491,7 @@ def generate_audio_sync(request: GenerateRequest) -> dict[str, Any]:
         model = RUNTIME.get_tts(request.model_name, request.device, request.dtype_name)
         wavs, sr = model.generate_voice_clone(
             text=target_text,
-            language="Chinese",
+            language=config["tts_label"],
             ref_audio=tmp_wav,
             ref_text=ref_text,
             x_vector_only_mode=False,
@@ -522,7 +558,13 @@ def create_app() -> FastAPI:
         return JSONResponse(
             {
                 "default_clip": "",
-                "default_target_text": DEFAULT_TARGET_TEXT,
+                "default_reference_language": DEFAULT_LANGUAGE,
+                "default_output_language": DEFAULT_LANGUAGE,
+                "language_options": [
+                    {"value": key, "label": value["label"], "default_target_text": value["default_target_text"]}
+                    for key, value in LANGUAGE_OPTIONS.items()
+                ],
+                "default_target_text": language_config(DEFAULT_LANGUAGE)["default_target_text"],
                 "default_model": DEFAULT_MODEL,
                 "default_device": device,
                 "default_dtype": pick_dtype(device),
@@ -595,7 +637,7 @@ def create_app() -> FastAPI:
                     chunk_length_s=25,
                     batch_size=8,
                     return_timestamps=True,
-                    generate_kwargs={"language": "zh"},
+                    generate_kwargs={"language": language_config(request.reference_language)["asr_label"]},
                 )
             finally:
                 Path(tmp_wav).unlink(missing_ok=True)
@@ -651,7 +693,7 @@ def create_app() -> FastAPI:
                 JOBS.update(job.job_id, progress=45, message="Generating cloned audio...")
                 wavs, sr = model.generate_voice_clone(
                     text=target_text,
-                    language="Chinese",
+                    language=language_config(request.output_language)["tts_label"],
                     ref_audio=tmp_wav,
                     ref_text=ref_text,
                     x_vector_only_mode=False,
