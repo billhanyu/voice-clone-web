@@ -59,21 +59,21 @@ pip install .
 
 ## Run
 
-```powershell
-.\.venv\Scripts\voice-clone-web
-```
-
-Then open `http://127.0.0.1:7861`.
-
-## Dev Run
-
-To run directly from `src/` without reinstalling after every edit:
+The simplest option is the dev launcher. It will create `.venv` if needed, install the package into that environment, switch this run to the repo-local environment, and launch from `src/`:
 
 ```powershell
 .\start-dev.ps1 --ip 127.0.0.1 --port 7861
 ```
 
-This uses `.venv\Scripts\python.exe` and sets `PYTHONPATH` to `src` for the current process only.
+Then open `http://127.0.0.1:7861`.
+
+## Installed Run
+
+If you already created `.venv` and want to run the installed entry point directly:
+
+```powershell
+.\.venv\Scripts\voice-clone-web
+```
 
 ## Notes
 
